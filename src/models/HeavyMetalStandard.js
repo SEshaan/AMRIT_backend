@@ -4,7 +4,6 @@ const heavyMetalStandardSchema = new mongoose.Schema({
   metal: {
     type: String,
     required: [true, 'Metal name is required'],
-    unique: true,
     uppercase: true,
     trim: true
   },
@@ -28,7 +27,7 @@ const heavyMetalStandardSchema = new mongoose.Schema({
   category: {
     type: String,
     enum: ['WHO', 'EPA', 'BIS', 'CPCB', 'Custom'],
-    default: 'WHO'
+    default: 'BIS'
   },
   description: {
     type: String,
@@ -51,7 +50,10 @@ const heavyMetalStandardSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for performance (metal index removed since unique: true already creates it)
+// Compound unique index to allow same metal with different categories
+heavyMetalStandardSchema.index({ metal: 1, category: 1 }, { unique: true });
+
+// Index for performance
 heavyMetalStandardSchema.index({ isActive: 1 });
 
 // Method to update standard value

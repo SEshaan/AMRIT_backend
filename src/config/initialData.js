@@ -96,6 +96,98 @@ export const defaultHeavyMetalStandards = [
   }
 ];
 
+// BIS (Bureau of Indian Standards) heavy metal standards
+export const bisHeavyMetalStandards = [
+  {
+    metal: 'FE',
+    standardValue: 0.3,
+    unit: 'ppm',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Iron - Acceptable limit for drinking water'
+  },
+  {
+    metal: 'AS',
+    standardValue: 10,
+    unit: 'ppb',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Arsenic - Acceptable limit'
+  },
+  {
+    metal: 'PB',
+    standardValue: 10,
+    unit: 'ppb',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Lead - Acceptable limit'
+  },
+  {
+    metal: 'HG',
+    standardValue: 1,
+    unit: 'ppb',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Mercury - Acceptable limit'
+  },
+  {
+    metal: 'CD',
+    standardValue: 3,
+    unit: 'ppb',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Cadmium - Acceptable limit'
+  },
+  {
+    metal: 'CR',
+    standardValue: 50,
+    unit: 'ppb',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Chromium - Acceptable limit'
+  },
+  {
+    metal: 'NI',
+    standardValue: 20,
+    unit: 'ppb',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Nickel - Acceptable limit'
+  },
+  {
+    metal: 'ZN',
+    standardValue: 5,
+    unit: 'ppm',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Zinc - Acceptable limit'
+  },
+  {
+    metal: 'CU',
+    standardValue: 0.05,
+    unit: 'ppm',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Copper - Acceptable limit'
+  },
+  {
+    metal: 'MN',
+    standardValue: 0.1,
+    unit: 'ppm',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Manganese - Acceptable limit'
+  },
+  {
+    metal: 'U',
+    standardValue: 30,
+    unit: 'ppb',
+    source: 'BIS 10500:2012 - Drinking Water Specifications',
+    category: 'BIS',
+    description: 'Uranium - Acceptable limit'
+  }
+];
+
 // Default formula configurations
 export const defaultFormulaConfigs = [
   {
@@ -184,14 +276,33 @@ export async function initializeHeavyMetalStandards() {
   try {
     console.log('Initializing heavy metal standards...');
     
+    // Initialize WHO standards
     for (const standard of defaultHeavyMetalStandards) {
-      const existing = await HeavyMetalStandard.findOne({ metal: standard.metal });
+      const existing = await HeavyMetalStandard.findOne({ 
+        metal: standard.metal, 
+        category: standard.category 
+      });
       
       if (!existing) {
         await HeavyMetalStandard.create(standard);
-        console.log(`Created standard for ${standard.metal}`);
+        console.log(`Created WHO standard for ${standard.metal}`);
       } else {
-        console.log(`Standard for ${standard.metal} already exists`);
+        console.log(`WHO standard for ${standard.metal} already exists`);
+      }
+    }
+    
+    // Initialize BIS standards
+    for (const standard of bisHeavyMetalStandards) {
+      const existing = await HeavyMetalStandard.findOne({ 
+        metal: standard.metal, 
+        category: standard.category 
+      });
+      
+      if (!existing) {
+        await HeavyMetalStandard.create(standard);
+        console.log(`Created BIS standard for ${standard.metal}`);
+      } else {
+        console.log(`BIS standard for ${standard.metal} already exists`);
       }
     }
     

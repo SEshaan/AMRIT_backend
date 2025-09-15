@@ -14,8 +14,8 @@ class HMPICalculator {
   /**
    * Get heavy metal standards with caching
    */
-  async getHeavyMetalStandards() {
-    const cacheKey = 'standards';
+  async getHeavyMetalStandards(category = 'BIS') {
+    const cacheKey = `standards_${category}`;
     const cached = this.standardsCache.get(cacheKey);
 
     if (cached && (Date.now() - cached.timestamp) < this.cacheExpiry) {
@@ -23,7 +23,11 @@ class HMPICalculator {
     }
 
     try {
-      const standards = await HeavyMetalStandard.getActiveStandards();
+      const standards = await HeavyMetalStandard.find({ 
+        isActive: true, 
+        category: category 
+      }).select('metal standardValue unit');
+      
       const standardsMap = new Map();
       
       standards.forEach(standard => {
@@ -88,6 +92,11 @@ class HMPICalculator {
    * Normalize units between measured value and standard
    */
   normalizeUnits(measuredValue, measuredUnit, standardUnit) {
+    // If units are the same, no conversion needed
+    if (measuredUnit === standardUnit) {
+      return measuredValue;
+    }
+
     const conversionFactors = {
       'ppm_to_ppb': 1000,
       'ppm_to_mg/L': 1,
@@ -120,9 +129,9 @@ class HMPICalculator {
    * HMPI = Σ(CFᵢ²) / n
    * where CFᵢ is the contamination factor for metal i, and n is the number of metals
    */
-  async calculateHMPI(heavyMetalValues) {
+  async calculateHMPI(heavyMetalValues, standardCategory = 'BIS') {
     try {
-      const standards = await this.getHeavyMetalStandards();
+      const standards = await this.getHeavyMetalStandards(standardCategory);
       const contaminationFactors = [];
       const metalDetails = {};
 
@@ -131,7 +140,7 @@ class HMPICalculator {
         const standard = standards.get(metalUpper);
 
         if (!standard) {
-          console.warn(`No standard found for metal: ${metal}`);
+          console.warn(`No ${standardCategory} standard found for metal: ${metal}`);
           continue;
         }
 
