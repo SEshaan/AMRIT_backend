@@ -313,8 +313,11 @@ class ExcelParser {
               district: locationInfo.district || ''
             },
             coordinates: {
-              latitude: locationInfo.latitude,
-              longitude: locationInfo.longitude
+              type: "Point",
+              coordinates: [
+                parseFloat(locationInfo.longitude) || 0,  // longitude first in GeoJSON
+                parseFloat(locationInfo.latitude) || 0    // latitude second in GeoJSON
+              ]
             },
             sampleInfo: {
               year: locationInfo.year || new Date().getFullYear(),
@@ -376,16 +379,20 @@ class ExcelParser {
   validateRecord(record) {
     const errors = [];
 
-    // Validate coordinates
-    if (record.coordinates.latitude) {
-      if (record.coordinates.latitude < -90 || record.coordinates.latitude > 90) {
-        errors.push('Invalid latitude value');
+    // Validate coordinates (GeoJSON format)
+    if (record.coordinates && record.coordinates.coordinates) {
+      const [longitude, latitude] = record.coordinates.coordinates;
+      
+      if (latitude !== undefined && latitude !== null) {
+        if (latitude < -90 || latitude > 90) {
+          errors.push('Invalid latitude value');
+        }
       }
-    }
 
-    if (record.coordinates.longitude) {
-      if (record.coordinates.longitude < -180 || record.coordinates.longitude > 180) {
-        errors.push('Invalid longitude value');
+      if (longitude !== undefined && longitude !== null) {
+        if (longitude < -180 || longitude > 180) {
+          errors.push('Invalid longitude value');
+        }
       }
     }
 

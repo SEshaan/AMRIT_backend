@@ -43,6 +43,9 @@ class DatabaseConnection {
       
       console.log(`✅ MongoDB connected successfully to: ${uri}`);
       
+      // Clean up problematic geospatial index if it exists
+      await this.cleanupProblematicIndexes();
+      
       // Initialize configurations after successful connection
       if (process.env.INIT_CONFIG !== 'false') {
         await this.initializeConfigurations();
@@ -82,6 +85,41 @@ class DatabaseConnection {
       }
     } catch (error) {
       console.error('❌ Configuration initialization failed:', error.message);
+    }
+  }
+
+  /**
+   * Clean up problematic indexes that conflict with current schema
+   */
+  async cleanupProblematicIndexes() {
+    try {
+      console.log('🧹 Checking for problematic geospatial indexes...');
+      
+      // Get the PollutionData collection
+      const db = mongoose.connection.db;
+      const collection = db.collection('pollutiondatas');
+      
+      // Get all indexes
+      const indexes = await collection.indexes();
+      
+      // Look for problematic 2dsphere index on coordinates
+      const problematicIndex = indexes.find(index => 
+        index.key && index.key.coordinates === '2dsphere'
+      );
+      
+      if (problematicIndex) {
+        console.log('🔧 Found problematic 2dsphere index, dropping it...');
+        await collection.dropIndex('coordinates_2dsphere');
+        console.log('✅ Problematic geospatial index removed');
+      } else {
+        console.log('✅ No problematic geospatial indexes found');
+      }
+    } catch (error) {
+      if (error.message.includes('index not found')) {
+        console.log('✅ No problematic geospatial indexes to remove');
+      } else {
+        console.warn('⚠️ Error cleaning up indexes:', error.message);
+      }
     }
   }
 

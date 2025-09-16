@@ -21,19 +21,38 @@ const pollutionDataSchema = new mongoose.Schema({
     }
   },
   
-  // Coordinates
+  // Coordinates in GeoJSON format for accurate geospatial operations
   coordinates: {
-    latitude: {
-      type: Number,
-      required: [true, 'Latitude is required'],
-      min: [-90, 'Latitude must be between -90 and 90'],
-      max: [90, 'Latitude must be between -90 and 90']
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
     },
-    longitude: {
-      type: Number,
-      required: [true, 'Longitude is required'],
-      min: [-180, 'Longitude must be between -180 and 180'],
-      max: [180, 'Longitude must be between -180 and 180']
+    coordinates: {
+      type: [Number], // [longitude, latitude] - Note: MongoDB uses [lon, lat] order
+      required: [true, 'Coordinates are required'],
+      validate: {
+        validator: function(coords) {
+          return coords.length === 2 && 
+                 coords[0] >= -180 && coords[0] <= 180 && // longitude
+                 coords[1] >= -90 && coords[1] <= 90;     // latitude
+        },
+        message: 'Coordinates must be [longitude, latitude] with valid ranges'
+      }
+    }
+  },
+
+  // Legacy coordinate fields for easy access (virtual fields)
+  latitude: {
+    type: Number,
+    get: function() {
+      return this.coordinates?.coordinates?.[1];
+    }
+  },
+  longitude: {
+    type: Number,
+    get: function() {
+      return this.coordinates?.coordinates?.[0];
     }
   },
 
@@ -110,7 +129,7 @@ const pollutionDataSchema = new mongoose.Schema({
     uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'Uploaded by user is required']
+      // Made optional since we don't have user authentication
     },
     uploadedAt: {
       type: Date,
@@ -166,14 +185,13 @@ const pollutionDataSchema = new mongoose.Schema({
 // Indexes for performance
 pollutionDataSchema.index({ 'location.name': 1 });
 pollutionDataSchema.index({ 'location.state': 1 });
-pollutionDataSchema.index({ 'coordinates.latitude': 1, 'coordinates.longitude': 1 });
 pollutionDataSchema.index({ 'sampleInfo.year': 1 });
 pollutionDataSchema.index({ 'processing.uploadedBy': 1 });
 pollutionDataSchema.index({ 'processing.uploadedAt': 1 });
 pollutionDataSchema.index({ 'pollutionIndices.hmpi.category': 1 });
 pollutionDataSchema.index({ 'processing.processingStatus': 1 });
 
-// Geospatial index for location-based queries
+// Proper GeoJSON 2dsphere index for accurate geospatial queries
 pollutionDataSchema.index({ coordinates: '2dsphere' });
 
 // Method to add heavy metal value
