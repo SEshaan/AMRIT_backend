@@ -4,7 +4,8 @@ import {
   getPollutionData,
   getPollutionDataById,
   getPollutionStats,
-  deletePollutionData
+  deletePollutionData,
+  getHeatmapData
 } from '../controllers/dataController.js';
 import { validateFileUpload, validatePagination } from '../middleware/validation.js';
 import fileUploader from '../utils/fileUploader.js';
@@ -17,6 +18,9 @@ router.post('/upload',
   validateFileUpload,
   uploadPollutionData
 );
+
+// Get heatmap data
+router.get('/heatmap', getHeatmapData);
 
 // Get pollution data with filters and pagination
 router.get('/', validatePagination, getPollutionData);

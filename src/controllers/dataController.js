@@ -646,10 +646,75 @@ export const deletePollutionData = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * @desc    Get data for heatmap visualization
+ * @route   GET /api/data/heatmap
+ * @access  Public
+ */
+export const getHeatmapData = asyncHandler(async (req, res, next) => {
+  const {
+    metric = 'hmpi', // 'hmpi' or a specific metal like 'Fe'
+    year,
+    state,
+    category
+  } = req.query;
+
+  // Build filter query
+  const filter = { 'processing.processingStatus': 'processed' };
+
+  if (year) {
+    filter['sampleInfo.year'] = parseInt(year);
+  }
+  if (state) {
+    filter['location.state'] = { $regex: state, $options: 'i' };
+  }
+  if (category) {
+    filter['pollutionIndices.hmpi.category'] = category;
+  }
+
+  // Add filter for the selected metric
+  if (metric.toLowerCase() === 'hmpi') {
+    filter['pollutionIndices.hmpi.value'] = { $exists: true, $ne: null };
+  } else {
+    // Assumes metric is a metal symbol, e.g., 'Fe'
+    filter[`heavyMetals.${metric.toUpperCase()}`] = { $exists: true };
+  }
+
+  // Use an aggregation pipeline for better performance and to shape the GeoJSON output.
+  const pipeline = [
+    { $match: filter },
+    {
+      $project: {
+        _id: 0,
+        type: { $literal: 'Feature' },
+        geometry: '$coordinates',
+        properties: {
+          location: '$location.name',
+          value:
+            metric.toLowerCase() === 'hmpi'
+              ? '$pollutionIndices.hmpi.value'
+              : { $ifNull: [`$heavyMetals.${metric.toUpperCase()}.value`, null] }
+        }
+      }
+    },
+  ];
+
+  // Limit the number of records for performance, can be made a query param
+  pipeline.push({ $limit: 5000 });
+
+  const features = await PollutionData.aggregate(pipeline);
+
+  res.status(200).json({
+    type: 'FeatureCollection',
+    features
+  });
+});
+
 export default {
   uploadPollutionData,
   getPollutionData,
   getPollutionDataById,
   getPollutionStats,
-  deletePollutionData
+  deletePollutionData,
+  getHeatmapData
 };
