@@ -279,6 +279,21 @@ class Server {
   }
 
   /**
+   * Initialize database connection for serverless environments.
+   */
+  async init() {
+    try {
+      // Connect to database
+      await dbConnection.connect();
+      console.log('✅ Database connected for serverless function.');
+      return this.app;
+    } catch (error) {
+      console.error('❌ Failed to initialize server for serverless function:', error);
+      process.exit(1);
+    }
+  }
+
+  /**
    * Start the server
    */
   async start() {
@@ -342,10 +357,21 @@ class Server {
   }
 }
 
-// Create and start server
-const server = new Server();
+/**
+ * Factory function to create and initialize the server.
+ * This is used for serverless environments like Vercel.
+ * @returns {Promise<import('express').Express>}
+ */
+async function createServer() {
+  const server = new Server();
+  // For serverless, we initialize and return the app.
+  // For local development, we would call server.start().
+  if (process.env.VERCEL) {
+    return await server.init();
+  }
+  // Fallback for local execution
+  await server.start();
+  return server.getApp();
+}
 
-// Start the server
-server.start().catch(console.error);
-
-export default server;
+export default createServer();
