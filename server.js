@@ -177,13 +177,43 @@ class Server {
             description: 'Get pollution statistics and analysis',
             parameters: {
               state: 'Filter statistics by state',
-              year: 'Filter statistics by year'
+              year: 'Filter statistics by year',
+              ne_lat: 'North-East corner latitude of the map bounding box.',
+              ne_lng: 'North-East corner longitude of the map bounding box.',
+              sw_lat: 'South-West corner latitude of the map bounding box.',
+              sw_lng: 'South-West corner longitude of the map bounding box.',
+              margin: 'Decimal degree margin to add to the bounding box (default: 0).'
             }
           },
           deleteData: {
             url: '/api/data/:id',
             method: 'DELETE',
             description: 'Delete pollution data record by ID'
+          },
+          getHeatmapData: {
+            url: '/api/data/heatmap',
+            method: 'GET',
+            description: 'Get GeoJSON data for heatmap visualization, with optional filters.',
+            parameters: {
+              metric: 'Metric to use for heatmap intensity (default: hmpi). Can be a metal symbol like "Fe".',
+              year: 'Filter by sample year.',
+              state: 'Filter by state.',
+              category: 'Filter by pollution category (Safe/Mid/Unsafe).',
+              ne_lat: 'North-East corner latitude of the map bounding box.',
+              ne_lng: 'North-East corner longitude of the map bounding box.',
+              sw_lat: 'South-West corner latitude of the map bounding box.',
+              sw_lng: 'South-West corner longitude of the map bounding box.',
+              margin: 'Decimal degree margin to add to the bounding box (default: 0.1).',              
+              aggregate: 'Set to "true" to enable grid-based aggregation for performance.',
+              agg_lat: 'Grid cell height in latitude degrees for aggregation (default: 0.1).',              
+              agg_lng: 'Grid cell width in longitude degrees for aggregation (default: 0.1).',
+              'metals[<symbol>][min]': 'Minimum value for a specific heavy metal (e.g., metals[Fe][min]=1.0).',
+              'metals[<symbol>][max]': 'Maximum value for a specific heavy metal (e.g., metals[As][max]=50).',
+              'env[<param>][min]': 'Minimum value for an environmental parameter (e.g., env[pH][min]=6.5).',
+              'env[<param>][max]': 'Maximum value for an environmental parameter (e.g., env[pH][max]=8.5).'
+            },
+            response: 'A GeoJSON FeatureCollection. If aggregate=true, each feature represents a grid cell with an `_id`, an averaged `value`, a `point_count`, and a `category` of "Aggregated".',
+            note: 'The endpoint is limited to 2000 records for performance.'
           }
         },
         sampleExcelFormat: {

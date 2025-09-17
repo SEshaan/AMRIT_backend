@@ -566,12 +566,32 @@ export const getPollutionDataById = asyncHandler(async (req, res, next) => {
  * @access  Public
  */
 export const getPollutionStats = asyncHandler(async (req, res, next) => {
-  const { state, year } = req.query;
+  const {
+    state,
+    year,
+    ne_lat,
+    ne_lng,
+    sw_lat,
+    sw_lng,
+    margin = 0
+  } = req.query;
 
   // Build filter
   const filter = {};
   if (state) filter['location.state'] = { $regex: state, $options: 'i' };
   if (year) filter['sampleInfo.year'] = parseInt(year);
+
+  // Handle bounding box filtering if coordinates are provided
+  if (ne_lat && ne_lng && sw_lat && sw_lng) {
+    const northEast = [parseFloat(ne_lng) + parseFloat(margin), parseFloat(ne_lat) + parseFloat(margin)];
+    const southWest = [parseFloat(sw_lng) - parseFloat(margin), parseFloat(sw_lat) - parseFloat(margin)];
+
+    filter.coordinates = {
+      $geoWithin: {
+        $box: [southWest, northEast]
+      }
+    };
+  }
 
   try {
     // Get category distribution
@@ -647,6 +667,64 @@ export const deletePollutionData = asyncHandler(async (req, res, next) => {
 });
 
 /**
+ * @desc    Get related data for a specific data point by its ID
+ * @route   GET /api/data/heatmap/:id
+ * @access  Public
+ */
+export const getRelatedDataById = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  // Find the data point by its ID and return all its details.
+  // The 'lean()' method returns a plain JavaScript object for better performance,
+  // as we don't need Mongoose's change tracking or methods here.
+  const record = await PollutionData.findById(id).lean();
+
+  if (!record) {
+    return next(new AppError('Pollution data record not found', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    data: record
+  });
+});
+
+/**
+ * Helper function to build dynamic filters for metals and environmental parameters.
+ * It parses query objects like:
+ * metals[Fe][min]=1.0&metals[Fe][max]=5.0
+ * env[pH][min]=6.5
+ * @param {object} queryParams - The req.query object.
+ * @returns {object} A MongoDB filter object.
+ */
+const buildDynamicFilters = (queryParams) => {
+  const filter = {};
+  const { metals, env } = queryParams;
+
+  // Handle heavy metal filters
+  if (metals && typeof metals === 'object') {
+    for (const [metal, conditions] of Object.entries(metals)) {
+      const key = `heavyMetals.${metal.toUpperCase()}.value`;
+      filter[key] = {};
+      if (conditions.min) filter[key].$gte = parseFloat(conditions.min);
+      if (conditions.max) filter[key].$lte = parseFloat(conditions.max);
+    }
+  }
+
+  // Handle environmental parameter filters
+  if (env && typeof env === 'object') {
+    for (const [param, conditions] of Object.entries(env)) {
+      // The key needs to match exactly how it's stored in the DB.
+      const key = `environmentalParams.${param}.value`;
+      filter[key] = {};
+      if (conditions.min) filter[key].$gte = parseFloat(conditions.min);
+      if (conditions.max) filter[key].$lte = parseFloat(conditions.max);
+    }
+  }
+
+  return filter;
+};
+/**
  * @desc    Get data for heatmap visualization
  * @route   GET /api/data/heatmap
  * @access  Public
@@ -656,12 +734,31 @@ export const getHeatmapData = asyncHandler(async (req, res, next) => {
     metric = 'hmpi', // 'hmpi' or a specific metal like 'Fe'
     year,
     state,
-    category
+    category,
+    ne_lat, ne_lng, sw_lat, sw_lng,
+    margin = 0.1, // Default margin of ~11km
+    aggregate,
+    agg_lat = 0.1, // Latitude degrees for aggregation grid
+    agg_lng = 0.1  // Longitude degrees for aggregation grid
   } = req.query;
 
   // Build filter query
-  const filter = { 'processing.processingStatus': 'processed' };
+  let filter = { 'processing.processingStatus': 'processed' };
 
+  // Handle bounding box filtering if coordinates are provided
+  if (ne_lat && ne_lng && sw_lat && sw_lng) {
+    const northEast = [parseFloat(ne_lng) + parseFloat(margin), parseFloat(ne_lat) + parseFloat(margin)];
+    const southWest = [parseFloat(sw_lng) - parseFloat(margin), parseFloat(sw_lat) - parseFloat(margin)];
+
+    filter.coordinates = {
+      $geoWithin: {
+        $box: [
+          southWest, // bottom-left
+          northEast  // top-right
+        ]
+      }
+    };
+  }
   if (year) {
     filter['sampleInfo.year'] = parseInt(year);
   }
@@ -680,41 +777,95 @@ export const getHeatmapData = asyncHandler(async (req, res, next) => {
     filter[`heavyMetals.${metric.toUpperCase()}`] = { $exists: true };
   }
 
-  // Use an aggregation pipeline for better performance and to shape the GeoJSON output.
-  const pipeline = [
-    { $match: filter },
-    {
-      $project: {
-        _id: 0,
-        type: { $literal: 'Feature' },
-        geometry: '$coordinates',
-        properties: {
-          location: '$location.name',
-          value:
-            metric.toLowerCase() === 'hmpi'
-              ? '$pollutionIndices.hmpi.value'
-              : { $ifNull: [`$heavyMetals.${metric.toUpperCase()}.value`, null] }
+  // Build and merge dynamic filters for metals and env params
+  const dynamicFilters = buildDynamicFilters(req.query);
+  filter = { ...filter, ...dynamicFilters };
+
+  if (aggregate === 'true') {
+    // --- AGGREGATED DATA PIPELINE ---
+    // Returns a simple array of [lng, lat, value] for high-performance heatmaps.
+    const LATITUDE_WIDTH_CONST = parseFloat(agg_lat);
+    const LONGITUDE_WIDTH_CONST = parseFloat(agg_lng);
+
+    const valueExpression = metric.toLowerCase() === 'hmpi'
+      ? '$pollutionIndices.hmpi.value'
+      : `$heavyMetals.${metric.toUpperCase()}.value`;
+
+    const pipeline = [
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            // Group by a grid defined by the constants
+            lng: {
+              $multiply: [
+                { $floor: { $divide: [{ $arrayElemAt: ['$coordinates.coordinates', 0] }, LONGITUDE_WIDTH_CONST] } },
+                LONGITUDE_WIDTH_CONST
+              ]
+            },
+            lat: {
+              $multiply: [
+                { $floor: { $divide: [{ $arrayElemAt: ['$coordinates.coordinates', 1] }, LATITUDE_WIDTH_CONST] } },
+                LATITUDE_WIDTH_CONST
+              ]
+            }
+          },
+          // Calculate the average value for the metric in each grid cell
+          avgValue: { $avg: valueExpression }
+        }
+      },
+      {
+        $project: {
+          _id: 0, // Exclude the default _id
+          type: { $literal: 'Feature' },
+          geometry: {
+            type: { $literal: 'Point' },
+            // Center the coordinate in the middle of the grid cell
+            coordinates: [
+              { $add: ['$_id.lng', LONGITUDE_WIDTH_CONST / 2] },
+              { $add: ['$_id.lat', LATITUDE_WIDTH_CONST / 2] }
+            ]
+          },
+          properties: {
+            value: '$avgValue',
+            category: { $literal: 'Aggregated' },
+            point_count: '$pointCount'
+          }
         }
       }
-    },
-  ];
+    ];
 
-  // Limit the number of records for performance, can be made a query param
-  pipeline.push({ $limit: 5000 });
+    const aggregatedFeatures = await PollutionData.aggregate(pipeline);
 
-  const features = await PollutionData.aggregate(pipeline);
+    res.status(200).json({
+      type: 'FeatureCollection',
+      features: aggregatedFeatures
+    });
 
-  res.status(200).json({
-    type: 'FeatureCollection',
-    features
-  });
+  } else {
+    // --- DETAILED GEOJSON PIPELINE (existing behavior) ---
+    const pipeline = [
+      { $match: filter },
+      {
+        $project: {
+          _id: '$_id',
+          type: { $literal: 'Feature' },
+          geometry: '$coordinates',
+          properties: {
+            location: '$location.name',
+            value: metric.toLowerCase() === 'hmpi' ? '$pollutionIndices.hmpi.value' : { $ifNull: [`$heavyMetals.${metric.toUpperCase()}.value`, null] },
+            category: '$pollutionIndices.hmpi.category',
+          }
+        }
+      },
+      { $limit: 2000 } // Limit for performance
+    ];
+
+    const features = await PollutionData.aggregate(pipeline);
+
+    res.status(200).json({
+      type: 'FeatureCollection',
+      features
+    });
+  }
 });
-
-export default {
-  uploadPollutionData,
-  getPollutionData,
-  getPollutionDataById,
-  getPollutionStats,
-  deletePollutionData,
-  getHeatmapData
-};
